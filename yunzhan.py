@@ -1,120 +1,141 @@
-##下载链接支持以下两种
-## https://book.eol.cn/books/xxxx/mobile/index.html
-## https://book.yunzhan365.com/xxxx/xxxx/mobile/index.html
-
-##自行安装相关库
-
-## 注意：某些文件并未匹配
-
+import requests
+import os
+import time
 from PIL import Image
 from io import BytesIO
-import requests
-import re
-import os
-import PIL
 
+# ================= 配置区域 =================
+MAX_PAGES = 300  # 最大尝试页数
+# ===========================================
 
-# 设置请求头
-headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0'}
-
-# 创建会话
-session = requests.session()
-
-def download_image(image_url, base_url, page_num, total_pages):
+def parse_url_to_base(user_url):
     """
-    下载单个图片并显示进度
+    智能解析用户输入的URL，提取出书籍的根目录
     """
-    # 构造完整的图片URL
-    full_url = f"{base_url}/files/large/{image_url}"
+    user_url = user_url.split('?')[0]  # 去掉参数
     
-    try:
-        response = session.get(full_url, headers=headers)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content))
-        
-        # 显示下载进度
-        progress = (page_num + 1) / total_pages
-        bar_length = 50
-        filled_length = int(round(bar_length * progress))
-        bar = "#" * filled_length + "-" * (bar_length - filled_length)
-        print(f"\r下载进度: [{bar}] {progress:.2%}", end='', flush=True)
-        
-        return img
-    except (requests.RequestException, PIL.UnidentifiedImageError):
-        # 如果第一次尝试失败，进行第二次尝试
-        image_url = image_url.replace('..\\', '').replace('\\', '/').replace('//', '/')
-        image_url = image_url.lstrip('/')
-        if image_url.startswith('files/large/'):
-            image_url = image_url[len('files/large/'):]
-        second_url = f'{base_url}/files/large/{image_url}'
+    if "/mobile/" in user_url:
+        root_url = user_url.split("/mobile/")[0]
+    elif "/files/" in user_url:
+        root_url = user_url.split("/files/")[0]
+    else:
+        root_url = user_url.rstrip("/")
+
+    # 1. 高清大图路径 (通常是 jpg)
+    high_res_template = f"{root_url}/files/large/{{}}.jpg"
+    # 2. 手机端路径 (通常是 webp 或 jpg)
+    mobile_template_webp = f"{root_url}/files/mobile/{{}}.webp"
+    mobile_template_jpg = f"{root_url}/files/mobile/{{}}.jpg"
+    
+    return high_res_template, [mobile_template_webp, mobile_template_jpg]
+
+def download_book(url):
+    print(f"正在解析链接: {url}")
+    high_res_url, mobile_urls = parse_url_to_base(url)
+    
+    # 生成唯一标识
+    timestamp = int(time.time())
+    # 提取书本ID作为名称一部分
+    book_id = url.split('/')[-3] if len(url.split('/')) > 3 else "book"
+    
+    # 1. 创建存放图片的专属文件夹
+    folder_name = f"{book_id}_图片集_{timestamp}"
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+        print(f"📂 已创建图片文件夹: {folder_name}")
+
+    # PDF 文件名放在外面
+    pdf_filename = f"{book_id}_{timestamp}.pdf"
+    
+    images = []
+    print(f"🚀 准备下载... (图片存于 '{folder_name}'，PDF 存于当前目录)")
+    print("-" * 40)
+
+    for page in range(1, MAX_PAGES + 1):
+        # 优先尝试高清版
+        target_url = high_res_url.format(page)
+        status_msg = "高清(Large)"
+        file_ext = "jpg" # 默认后缀
         
         try:
-            response = session.get(second_url, headers=headers)
-            response.raise_for_status()
-            img = Image.open(BytesIO(response.content))
+            # 请求图片
+            response = requests.get(target_url, timeout=5)
             
-            # 显示下载进度
-            progress = (page_num + 1) / total_pages
-            bar_length = 50
-            filled_length = int(round(bar_length * progress))
-            bar = "#" * filled_length + "-" * (bar_length - filled_length)
-            print(f"\r下载进度: [{bar}] {progress:.2%}", end='', flush=True)
+            # 如果高清版失败，尝试手机版
+            if response.status_code != 200:
+                for m_url in mobile_urls:
+                    target_url = m_url.format(page)
+                    response = requests.get(target_url, timeout=5)
+                    if response.status_code == 200:
+                        status_msg = "普通(Mobile)"
+                        # 检查是 webp 还是 jpg
+                        if target_url.endswith(".webp"):
+                            file_ext = "webp"
+                        else:
+                            file_ext = "jpg"
+                        break
             
-            return img
-        except (requests.RequestException, PIL.UnidentifiedImageError) as e:
-            print(f"\n下载图片 {page_num} 时出错: {str(e)}")
-            return None
+            # 处理下载结果
+            if response.status_code == 200:
+                # A. 保存图片文件到文件夹
+                image_filename = f"{page}.{file_ext}"
+                image_path = os.path.join(folder_name, image_filename)
+                
+                with open(image_path, "wb") as f:
+                    f.write(response.content)
 
-def process_book(book_url):
-    """
-    处理单本书籍的下载和PDF生成
-    """
-    try:
-        # 获取初始页面
-        response = session.get(book_url, headers=headers)
-        response.raise_for_status()
-        base_url = '/'.join(book_url.split('/')[:5])
-        
-        # 提取配置文件URL
-        config_match = re.findall('src="javascript/config.js\?(.+?)"></script>', response.text, re.S)
-        if config_match:
-            config_url = f'{book_url.rsplit("/", 1)[0]}/javascript/config.js?{config_match[0]}'
-            config_response = session.get(config_url, headers=headers)
-            config_response.raise_for_status()
-            
-            # 提取书籍标题和图片URL
-            title = re.findall('"title":"(.+?)"', config_response.text)[0]
-            image_urls = re.findall('"n":\[\"(.+?)\"\]', config_response.text)
-            
-            print(f"{title}.pdf / 共{len(image_urls)}页")
-            
-            # 下载图片
-            images = []
-            for page_num, image_url in enumerate(image_urls):
-                img = download_image(image_url, base_url, page_num, len(image_urls))
-                if img:
-                    images.append(img)
-            
-            print('\n开始制作并合并成PDF...')
-            if images:
-                images[0].save(f"./{title}.pdf", "PDF", resolution=100.0, save_all=True, append_images=images[1:])
-                print(f"{os.getcwd()}/{title}.pdf")
+                # B. 准备 PDF 数据 (在内存中转换，不影响保存的文件)
+                img = Image.open(BytesIO(response.content))
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                images.append(img)
+                
+                print(f"✅ 第 {page} 页: 已保存为 {image_filename} [{status_msg}]")
             else:
-                print("没有成功下载任何图片")
-        else:
-            print(book_url, '识别错误')
-    except requests.RequestException as e:
-        print(f"访问网站时出错: {str(e)}")
-    except Exception as e:
-        print(f"发生意外错误: {str(e)}")
+                print(f"🏁 第 {page} 页下载失败，判定书籍结束。")
+                break
+                
+        except Exception as e:
+            print(f"❌ 第 {page} 页发生错误: {e}")
+            break
 
-if __name__ == '__main__':
+    # 合成 PDF
+    if images:
+        print("-" * 40)
+        print(f"正在将 {len(images)} 张图片合成为 PDF...")
+        try:
+            images[0].save(pdf_filename, "PDF", resolution=100.0, save_all=True, append_images=images[1:])
+            print(f"🎉 大功告成！")
+            print(f"📄 PDF文件: {os.path.abspath(pdf_filename)}")
+            print(f"📂 图片文件夹: {os.path.abspath(folder_name)}")
+        except Exception as e:
+            print(f"❌ 生成 PDF 失败: {e}")
+    else:
+        # 如果没下载到东西，把空文件夹删了免得占地方
+        try:
+            os.rmdir(folder_name)
+        except:
+            pass
+        print("⚠️ 未找到任何页面，请检查链接是否正确。")
+    print("\n" + "="*40 + "\n")
+
+# 主循环
+if __name__ == "__main__":
+    print("云展网/电子书 PDF下载器 (含图片备份版)")
+    print("功能：自动下载图片存入文件夹 + 生成 PDF")
+    print("="*40)
+    
     while True:
-        book_url = input("输入书本网址:[例:https://book.eol.cn/books/xxxx/mobile/index.html] (输入 'q' 退出)\n下载链接：")
-        if book_url.lower() == 'q':
+        user_input = input("输入书本网址:[例:https://.../mobile/index.html] (输入 'q' 退出)\n下载链接：").strip()
+        
+        if user_input.lower() == 'q':
+            print("退出程序。")
             break
-        process_book(book_url)
-        choice = input("是否继续下载其他书本? (y/n): ")
-        if choice.lower() != 'y':
-            break
-    print("程序已退出")
+            
+        if not user_input:
+            continue
+            
+        try:
+            download_book(user_input)
+        except Exception as e:
+            print(f"发生未知错误: {e}")
