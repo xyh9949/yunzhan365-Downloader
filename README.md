@@ -74,17 +74,33 @@ Project/
     └── ...
 
 ```
+---
 
-## ⚙️ 高级配置
+## 🛠️ 方式二：浏览器油猴脚本
 
-如果需要调整参数（如最大页数限制），请在代码顶部修改配置区域：
+**无需安装 Python，无需配置环境，在浏览器中直接点击按钮即可下载。**
 
-```python
-# ================= 配置区域 =================
-MAX_PAGES = 300  # 最大尝试页数，如果书很厚建议改大
-# ===========================================
+<https://greasyfork.org/zh-CN/scripts/560278-%E4%BA%91%E5%B1%95%E7%BD%91-yunzhan365-%E4%B8%80%E9%94%AE%E4%B8%8B%E8%BD%BD%E5%99%A8-v3-0-%E9%80%9A%E7%94%A8%E7%89%88>
 
-```
+### 1. 安装管理器
+首先，请为您的浏览器安装 **Tampermonkey (篡改猴)** 扩展：
+* [Chrome / Edge 版本](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+* [Firefox 版本](https://addons.mozilla.org/zh-CN/firefox/addon/tampermonkey/)
+
+### 2. 安装脚本
+1.  点击 Tampermonkey 图标 -> **“添加新脚本”**。
+2.  删除编辑器中的所有默认代码。
+3.  复制本项目提供的 `userscript.js` (或 v3.0+ 版本代码) 内容并粘贴。
+4.  按 `Ctrl+S` 保存。
+
+### 3. 如何使用
+1.  在浏览器中打开任意云展网电子书阅读页面（例如：`https://book.yunzhan365.com/...`）。
+2.  等待页面加载完毕，页面**右下角**会出现两个悬浮按钮：
+    * **📦 下载图片打包 (ZIP)**
+    * **📄 下载电子书 (PDF)**
+3.  点击对应按钮，等待进度条走完，文件将自动保存到您的电脑。
+
+---
 
 ## 🤝 贡献 (Contributing)
 
